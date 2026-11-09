@@ -1,0 +1,32 @@
+# Secrets and local configuration
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+.venv/
+venv/
+.env.*
+!.env.example
+
+# Runtime data
+vector_db_gemini/
+data/
+*.sqlite3
+*.db
+*.wav
+*.m4a
+
+# Packaging/build output
+build/
+dist/
+*.egg-info/
+*.spec
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
