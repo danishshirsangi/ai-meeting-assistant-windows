@@ -22,7 +22,8 @@ class AudioController(QObject):
     error = Signal(str)
 
     SAMPLE_RATE = 48000
-    LOOPBACK_BLOCKSIZE = 2048
+    LOOPBACK_BLOCKSIZE = 8192
+    LOOPBACK_READ_FRAMES = 2048
 
     def __init__(self, project_root=None):
         super().__init__()
@@ -109,7 +110,7 @@ class AudioController(QObject):
             ) as recorder:
                 self._loopback_ready.set()
                 while not self._loopback_stop.is_set():
-                    data = recorder.record(numframes=self.LOOPBACK_BLOCKSIZE)
+                    data = recorder.record(numframes=self.LOOPBACK_READ_FRAMES)
                     if data is not None and len(data):
                         self._loopback_frames.append(
                             np.asarray(data, dtype=np.float32).copy()
