@@ -253,7 +253,7 @@ class MainWindow(QMainWindow):
         self.hide_button = QPushButton("Hide window  Ctrl+Alt+H")
         self.hide_button.setObjectName("hideButton")
         self.hide_button.setToolTip(
-            "Hide AI Meeting Assistant. Press Control + Option + H to restore it."
+            "Hide AI Meeting Assistant. Press Ctrl + Alt + H to restore it."
         )
         self.hide_button.clicked.connect(self._toggle_window_visibility)
 
@@ -321,7 +321,7 @@ class MainWindow(QMainWindow):
         self.record_button = QPushButton("Start recording")
         self.record_button.setObjectName("recordButton")
         self.record_button.setToolTip(
-            "Press Control + Option + R to start recording; press again to stop."
+            "Press Ctrl + Alt + R to start recording; press again to stop."
         )
         self.record_button.clicked.connect(self._toggle_recording)
 
