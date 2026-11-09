@@ -7,7 +7,7 @@ on:
     branches: [mybranch, main]
 
 jobs:
-  tests:
+  core-tests:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +24,20 @@ jobs:
         run: python -m compileall -q .
       - name: Run unit tests
         run: python -m pytest -q
+
+  windows-audio-dependencies:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Windows audio dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install -r requirements-audio-windows.txt
+      - name: Verify audio packages import
+        run: python -c "import soundcard, sounddevice, soundfile, faster_whisper; print('Windows audio dependencies imported successfully')"
+      - name: Check dependency consistency
+        run: python -m pip check
