@@ -5,3 +5,5 @@ soundfile>=0.13.1
 soundcard>=0.4.3
 pynput>=1.7.7
 faster-whisper>=1.1.0
+# faster-whisper 1.2.1 passes metadata_errors to av.open(); PyAV 19 removed it.
+av>=11,<19
