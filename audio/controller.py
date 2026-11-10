@@ -47,8 +47,6 @@ class AudioController(QObject):
         self.selected_input_device = None
 
     def _cleanup_stale_sessions(self):
-        # Remove abandoned files from previous crashed processes only when their
-        # owning process is no longer running.
         for folder in self.temp_root.glob("interview-copilot-audio-*"):
             try:
                 owner_pid = int(folder.name.split("-")[3])
@@ -100,9 +98,6 @@ class AudioController(QObject):
 
     def _capture_loopback(self, loopback_microphone):
         try:
-            # SoundCard exposes Windows WASAPI speaker loopback devices through
-            # include_loopback=True. Keep two channels to avoid the known
-            # single-channel WASAPI recording issue.
             with loopback_microphone.recorder(
                 samplerate=self.SAMPLE_RATE,
                 channels=2,
@@ -118,6 +113,47 @@ class AudioController(QObject):
         except Exception as exc:
             self._loopback_error = str(exc)
             self._loopback_ready.set()
+
+    @staticmethod
+    def _default_loopback_microphone():
+        """Resolve the loopback endpoint using SoundCard's speaker mapping."""
+        speaker = sc.default_speaker()
+        if speaker is None:
+            raise RuntimeError(
+                "Windows has no default playback device. Select an output device "
+                "in Settings > System > Sound, then retry."
+            )
+
+        # SoundCard associates loopback microphones with speaker IDs. Name
+        # matching is retained as a fallback for drivers exposing different IDs.
+        microphones = sc.all_microphones(include_loopback=True)
+        speaker_id = str(getattr(speaker, "id", "") or "")
+        candidates = []
+        for microphone in microphones:
+            if not getattr(microphone, "isloopback", False):
+                continue
+            microphone_id = str(getattr(microphone, "id", "") or "")
+            if speaker_id and microphone_id == speaker_id:
+                return microphone
+            if getattr(microphone, "name", None) == getattr(speaker, "name", None):
+                candidates.append(microphone)
+
+        if candidates:
+            return candidates[0]
+
+        # Older SoundCard/driver combinations can expose the speaker name as
+        # the loopback endpoint ID even when the ID fields do not match.
+        try:
+            return sc.get_microphone(
+                id=str(speaker.name),
+                include_loopback=True,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Could not find a WASAPI loopback endpoint for the default "
+                f"speaker '{speaker.name}'. You can still record microphone audio. "
+                "Check the Windows output device and try again. Details: " + str(exc)
+            ) from exc
 
     def start_recording(self):
         with self._lock:
@@ -140,38 +176,51 @@ class AudioController(QObject):
             self._mic_path = self._session_dir / (stamp + "-mic.wav")
             self._system_path = self._session_dir / (stamp + "-system.wav")
 
-            self._mic_stream = sd.InputStream(
-                device=self.selected_input_device,
-                samplerate=self.SAMPLE_RATE,
-                channels=1,
-                dtype="int16",
-                callback=self._mic_callback,
-            )
-            self._mic_stream.start()
-
-            speaker = sc.default_speaker()
-            if speaker is None:
-                raise RuntimeError("Windows did not provide a default output device.")
-            loopback = sc.get_microphone(
-                id=str(speaker.name),
-                include_loopback=True,
-            )
-            self._loopback_thread = threading.Thread(
-                target=self._capture_loopback,
-                args=(loopback,),
-                name="WindowsSystemAudioCapture",
-                daemon=True,
-            )
-            self._loopback_thread.start()
-
-            if not self._loopback_ready.wait(timeout=12):
-                raise RuntimeError(
-                    "Timed out starting Windows system-audio capture. "
-                    "Check that a default output device is selected."
+            # Start microphone capture first. A loopback problem must not prevent
+            # the user from recording their own voice.
+            try:
+                self._mic_stream = sd.InputStream(
+                    device=self.selected_input_device,
+                    samplerate=self.SAMPLE_RATE,
+                    channels=1,
+                    dtype="int16",
+                    callback=self._mic_callback,
                 )
-            if self._loopback_error:
+                self._mic_stream.start()
+            except Exception as exc:
                 raise RuntimeError(
-                    "Windows system-audio capture could not start: "
+                    "Could not start microphone capture. Check Windows microphone "
+                    "privacy permissions and the selected input device. Details: "
+                    + str(exc)
+                ) from exc
+
+            # System loopback is optional: keep recording the microphone if the
+            # Windows audio driver does not expose a compatible WASAPI endpoint.
+            try:
+                loopback = self._default_loopback_microphone()
+                self._loopback_thread = threading.Thread(
+                    target=self._capture_loopback,
+                    args=(loopback,),
+                    name="WindowsSystemAudioCapture",
+                    daemon=True,
+                )
+                self._loopback_thread.start()
+
+                if not self._loopback_ready.wait(timeout=12):
+                    raise RuntimeError(
+                        "Timed out starting Windows system-audio capture. "
+                        "Check that a default output device is selected."
+                    )
+                if self._loopback_error:
+                    raise RuntimeError(self._loopback_error)
+            except Exception as exc:
+                self._loopback_error = str(exc)
+                self._loopback_stop.set()
+                if self._loopback_thread is not None:
+                    self._loopback_thread.join(timeout=2)
+                    self._loopback_thread = None
+                self.error.emit(
+                    "System audio is unavailable; microphone recording will continue. "
                     + self._loopback_error
                 )
 
@@ -185,8 +234,6 @@ class AudioController(QObject):
 
     def _mic_callback(self, indata, frames, timing, status):
         if status:
-            # PortAudio status flags are useful diagnostics but do not always
-            # mean that the captured audio is unusable.
             pass
         self._mic_frames.append(indata.copy())
 
@@ -284,8 +331,8 @@ class AudioController(QObject):
                 )
             if loopback_error:
                 self.error.emit(
-                    "System audio capture stopped unexpectedly; the microphone "
-                    "transcript is still available. " + loopback_error
+                    "System audio capture was unavailable; the microphone transcript "
+                    "is still available. " + loopback_error
                 )
             self.transcript_ready.emit(transcript)
         except Exception as exc:
