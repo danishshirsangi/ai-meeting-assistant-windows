@@ -24,7 +24,10 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(
             QIcon(str(Path(__file__).resolve().parents[1] / "assets" / "interview-copilot.svg"))
         )
-        # Keep the main application window above other app windows.
+        # Treat this as a utility/overlay window on Windows: Qt.Tool removes
+        # it from the taskbar and Alt+Tab switcher while keeping it usable.
+        # Ctrl+Alt+H remains the global shortcut to hide/restore the window.
+        self.setWindowFlag(Qt.WindowType.Tool, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.resize(1180, 850)
         self.setMinimumSize(900, 650)
