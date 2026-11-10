@@ -166,6 +166,7 @@ class AudioController(QObject):
         self._loopback_error = None
         self._loopback_stop.clear()
         self._loopback_ready.clear()
+        loopback_warning = None
 
         try:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -219,12 +220,14 @@ class AudioController(QObject):
                 if self._loopback_thread is not None:
                     self._loopback_thread.join(timeout=2)
                     self._loopback_thread = None
-                self.error.emit(
+                loopback_warning = (
                     "System audio is unavailable; microphone recording will continue. "
                     + self._loopback_error
                 )
 
             self.recording_changed.emit(True)
+            if loopback_warning:
+                self.error.emit(loopback_warning)
         except Exception as exc:
             self._cleanup_capture()
             self._remove_session_files()
