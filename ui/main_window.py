@@ -729,12 +729,20 @@ class MainWindow(QMainWindow):
             self.audio.toggle_recording()
 
     def _audio_error(self, message):
-        self._set_status("Audio error", warning=True)
+        # Audio warnings can arrive while microphone-only recording continues.
+        # Do not make the record button look stopped when the mic is still active.
+        recording = bool(self.audio and self.audio.is_recording)
+        self._set_status(
+            "Recording (microphone only)" if recording else "Audio error",
+            warning=True,
+        )
         self.audio_hint.setText(message)
-        self.record_button.setProperty("recording", False)
+        self.record_button.setProperty("recording", recording)
         self.record_button.style().unpolish(self.record_button)
         self.record_button.style().polish(self.record_button)
-        self.record_button.setText("Start recording")
+        self.record_button.setText(
+            "Stop recording" if recording else "Start recording"
+        )
 
     def _answer_done(self, question_id, question, answer):
         self.history.extend([
