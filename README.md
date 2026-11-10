@@ -30,7 +30,7 @@ Capture exclusion is best-effort and is not a security boundary. Some recording 
 - Python 3.12, 64-bit.
 - Internet access for dependency installation, Gemini requests and the first Whisper model download.
 - A Gemini API key from [Google AI Studio](https://aistudio.google.com/api-keys).
-- A working microphone and audio output device for audio capture.
+- A working microphone. A playback device is needed only for capturing system audio; microphone recording can continue without loopback.
 
 Xcode, Swift, Homebrew, MLX, Ollama, ChromaDB, ONNX Runtime and a separately installed FFmpeg are not required for this Windows build.
 
@@ -122,7 +122,7 @@ Open **Settings → Privacy & security → Microphone** and enable microphone ac
 - **Input:** Windows Settings → System → Sound → Input.
 - **Output:** Windows Settings → System → Sound → Output.
 
-The app records the default output device using WASAPI loopback. If system audio is silent, confirm that the intended output device is selected and that audio is playing through it. Some virtual audio devices, Bluetooth routes and exclusive-mode configurations may behave differently.
+The app attempts to record the default output device using WASAPI loopback. If loopback cannot initialize (for example, because the Windows audio driver or Bluetooth/virtual device does not expose a compatible endpoint), microphone recording continues and the app shows a system-audio warning. To capture both sides, confirm the intended output device is selected and audio is playing through it. Some virtual audio devices, Bluetooth routes and exclusive-mode configurations may behave differently.
 
 Global shortcuts may be blocked by security software or another app that has registered the same combination. The on-screen buttons remain available.
 
