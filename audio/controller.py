@@ -40,6 +40,7 @@ class AudioController(QObject):
         self._loopback_stop = threading.Event()
         self._loopback_ready = threading.Event()
         self._loopback_error = None
+        self._loopback_warning_emitted = False
         self._session_dir = None
         self._mic_path = None
         self._system_path = None
@@ -164,6 +165,7 @@ class AudioController(QObject):
         self._mic_frames = []
         self._loopback_frames = []
         self._loopback_error = None
+        self._loopback_warning_emitted = False
         self._loopback_stop.clear()
         self._loopback_ready.clear()
         loopback_warning = None
@@ -227,6 +229,7 @@ class AudioController(QObject):
 
             self.recording_changed.emit(True)
             if loopback_warning:
+                self._loopback_warning_emitted = True
                 self.error.emit(loopback_warning)
         except Exception as exc:
             self._cleanup_capture()
@@ -258,7 +261,13 @@ class AudioController(QObject):
 
         threading.Thread(
             target=self._transcribe,
-            args=(mic_path, system_path, session_dir, self._loopback_error),
+            args=(
+                mic_path,
+                system_path,
+                session_dir,
+                self._loopback_error,
+                self._loopback_warning_emitted,
+            ),
             name="LocalWhisperTranscription",
             daemon=True,
         ).start()
@@ -309,7 +318,14 @@ class AudioController(QObject):
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
 
-    def _transcribe(self, mic_path, system_path, session_dir, loopback_error=None):
+    def _transcribe(
+        self,
+        mic_path,
+        system_path,
+        session_dir,
+        loopback_error=None,
+        loopback_warning_emitted=False,
+    ):
         try:
             results = []
             if mic_path and mic_path.exists() and mic_path.stat().st_size > 44:
@@ -332,7 +348,7 @@ class AudioController(QObject):
                     "settings, selected input/output devices and audio levels."
                     + detail
                 )
-            if loopback_error:
+            if loopback_error and not loopback_warning_emitted:
                 self.error.emit(
                     "System audio capture was unavailable; the microphone transcript "
                     "is still available. " + loopback_error
