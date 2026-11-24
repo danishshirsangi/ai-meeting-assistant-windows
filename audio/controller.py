@@ -15,6 +15,7 @@ import soundfile as sf
 from PySide6.QtCore import QObject, Signal
 
 from audio.transcriber import transcribe_local
+from core.user_settings import DEFAULT_SHORTCUTS, pynput_shortcut
 
 
 class AudioController(QObject):
@@ -97,13 +98,20 @@ class AudioController(QObject):
             raise RuntimeError("Stop recording before changing the microphone.")
         self.selected_input_device = device_index
 
-    def start_hotkey_listener(self):
+    def stop_hotkey_listener(self):
+        if self._listener is not None:
+            self._listener.stop()
+            self._listener = None
+
+    def start_hotkey_listener(self, shortcuts=None):
+        self.stop_hotkey_listener()
+        shortcuts = shortcuts or DEFAULT_SHORTCUTS
         try:
             from pynput import keyboard
 
             hotkeys = {
-                "<ctrl>+<alt>+r": self.toggle_recording,
-                "<ctrl>+<alt>+h": self.window_visibility_toggle_requested.emit,
+                pynput_shortcut(shortcuts["record"]): self.toggle_recording,
+                pynput_shortcut(shortcuts["visibility"]): self.window_visibility_toggle_requested.emit,
             }
             self._listener = keyboard.GlobalHotKeys(hotkeys)
             self._listener.daemon = True

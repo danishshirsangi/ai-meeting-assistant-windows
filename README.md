@@ -261,3 +261,7 @@ The Dev-Setup branch builds a portable x64 ZIP through GitHub Actions on relevan
 ## Security checks
 
 Portable builds run high-severity Bandit checks, a dependency vulnerability audit, redacted Gitleaks history scanning, packaged import tests and a Microsoft Defender scan. A failed or unavailable required check blocks the portable artifact. Security reports are separate from the portable bundle. SHA256SUMS.txt records hashes of the packaged files before the manifest itself is added. These checks are not a guarantee of safety, nor a replacement for Windows hardware/runtime testing. API keys and resume data in the portable data directory remain unencrypted; do not share configured copies.
+
+## Settings
+
+Use the Settings button to edit global keyboard shortcuts or replace the Gemini API key without restarting. Shortcuts activate after closing Settings. API key changes are saved to the local unencrypted .env file and checked asynchronously; the main status displays the connection result. Portable shortcuts are stored in data/shortcuts.json. Do not share configured copies.

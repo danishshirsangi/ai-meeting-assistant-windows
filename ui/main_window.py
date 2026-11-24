@@ -17,6 +17,8 @@ from core.resume_rag import ResumeRAG
 from ui.windows_window_privacy import set_window_capture_exclusion
 from ui.rich_text import format_response_html
 from ui.worker import FunctionWorker
+from ui.settings_dialog import SettingsDialog
+from core.user_settings import load_shortcuts, save_shortcuts, save_api_key
 
 
 class MainWindow(QMainWindow):
@@ -178,6 +180,7 @@ class MainWindow(QMainWindow):
 
         self.pool = QThreadPool.globalInstance()
         self._active_workers = set()
+        self.shortcuts = load_shortcuts()
         self.gemini = GeminiClient()
         data_dir = Path(sys.executable).resolve().parent / "data"
         self.rag = ResumeRAG(self.gemini, persist_dir=data_dir / "vector_db_gemini" if getattr(sys, "frozen", False) else "vector_db_gemini")
@@ -202,13 +205,53 @@ class MainWindow(QMainWindow):
         if getattr(sys, "frozen", False) and not self.gemini.api_key:
             key, accepted = QInputDialog.getText(self, "Gemini configuration", "Enter your Gemini API key (used for cloud AI):", QLineEdit.EchoMode.Password)
             if accepted and key.strip() and not any(ch in key for ch in "\r\n"):
-                data_dir.mkdir(parents=True, exist_ok=True)
-                (data_dir / ".env").write_text("GEMINI_API_KEY=" + key.strip() + "\n", encoding="utf-8")
-                self.gemini = GeminiClient(api_key=key.strip())
-                self.rag.embedding_client = self.gemini
-                self.generator = AnswerGenerator(self.gemini, self.rag)
+                try:
+                    self._replace_api_key(key, check=False)
+                except (ValueError, OSError):
+                    self._set_status("API key not saved — open Settings", warning=True)
+        self._update_shortcut_labels()
         self._setup_audio()
         self._check_server()
+
+    def _update_shortcut_labels(self):
+        record = self.shortcuts["record"]
+        visibility = self.shortcuts["visibility"]
+        self.hide_button.setText(f"Hide window  {visibility}")
+        self.hide_button.setToolTip(f"Press {visibility} to restore the window.")
+        self.record_button.setToolTip(f"Press {record} to start or stop recording.")
+        self.footer.setText(f"{record} Record / stop · {visibility} Hide / restore · Local transcription · Gemini responses online")
+
+    def _save_shortcuts(self, values):
+        save_shortcuts(values)
+        self.shortcuts = values
+        self._update_shortcut_labels()
+
+    def _replace_api_key(self, key, check=True):
+        if check and (self._active_workers or (self.audio and self.audio.is_recording)):
+            raise ValueError("Finish the current operation before replacing the API key.")
+        new_client = GeminiClient(api_key=key.strip(), chat_model=self.gemini.chat_model,
+                                  embedding_model=self.gemini.embedding_model)
+        save_api_key(key)
+        self.gemini = new_client
+        self.rag.embedding_client = new_client
+        self.generator = AnswerGenerator(new_client, self.rag)
+        if check:
+            self._set_status("Checking Gemini connection…")
+            self._check_server()
+
+    def _open_settings(self):
+        if self.audio and self.audio.is_recording:
+            self._set_status("Stop recording before opening Settings", warning=True)
+            return
+        if self.audio:
+            self.audio.stop_hotkey_listener()
+        try:
+            dialog = SettingsDialog(self.shortcuts, self.gemini.api_key,
+                                    self._save_shortcuts, self._replace_api_key, self)
+            dialog.exec()
+        finally:
+            if self.audio:
+                self.audio.start_hotkey_listener(self.shortcuts)
 
     def _make_panel(self, title, hint=None):
         panel = QFrame()
@@ -293,6 +336,9 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(clear)
         toolbar.addWidget(self.privacy_button)
         toolbar.addStretch()
+        settings = QPushButton("Settings")
+        settings.clicked.connect(self._open_settings)
+        toolbar.addWidget(settings)
         toolbar.addWidget(self.hide_button)
         root.addLayout(toolbar)
 
@@ -345,7 +391,7 @@ class MainWindow(QMainWindow):
 
         # Recording controls
         recording_panel, recording_layout = self._make_panel(
-            "AUDIO INPUT", "Ctrl+Alt+R to toggle recording"
+            "AUDIO INPUT", "Use the record button or shortcut"
         )
         recording_row = QHBoxLayout()
         self.record_button = QPushButton("Start recording")
@@ -393,12 +439,12 @@ class MainWindow(QMainWindow):
         composer.addWidget(self.ask_button)
         root.addLayout(composer)
 
-        footer = QLabel(
+        self.footer = QLabel(
             "Ctrl+Alt+R  Record / stop     ·     Ctrl+Alt+H  Hide / restore window     ·     Local transcription · Gemini responses online"
         )
-        footer.setObjectName("sectionHint")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.addWidget(footer)
+        self.footer.setObjectName("sectionHint")
+        self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(self.footer)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -463,8 +509,8 @@ class MainWindow(QMainWindow):
             self.audio.error.connect(self._audio_error)
             self.microphone.currentIndexChanged.connect(self._microphone_changed)
             self._refresh_microphones()
-            self.audio.start_hotkey_listener()
-            self.audio_hint.setText("Ctrl+Alt+R record · Ctrl+Alt+H hide / restore window")
+            self.audio.start_hotkey_listener(self.shortcuts)
+            self._update_shortcut_labels()
         except Exception as exc:
             self.audio_hint.setText(
                 "Audio dependencies unavailable. Install requirements-audio-windows.txt"
@@ -521,7 +567,7 @@ class MainWindow(QMainWindow):
     def _gemini_unavailable(self, error):
         message = str(error)
         if "API key not found" in message:
-            self._set_status("Gemini API key missing — configure .env", warning=True)
+            self._set_status("Gemini API key missing — open Settings", warning=True)
         else:
             self._set_status("Gemini unavailable — check connection / key", warning=True)
         self.status.setToolTip(message)
@@ -783,7 +829,7 @@ class MainWindow(QMainWindow):
         self.record_button.style().polish(self.record_button)
         self.record_button.setText("Stop recording" if active else "Start recording")
         self.audio_hint.setText(
-            "Recording · Ctrl+Alt+R stop · Ctrl+Alt+H hide window"
+            f"Recording · {self.shortcuts['record']} stop · {self.shortcuts['visibility']} hide window"
             if active else "Transcribing locally…"
         )
         self.microphone.setEnabled(not active)

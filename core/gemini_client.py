@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from core.user_settings import saved_api_key
 from google import genai
 from google.genai import types
 
@@ -24,7 +25,7 @@ class GeminiClient:
         config_path = Path(sys.executable).resolve().parent / "data" / ".env" if getattr(sys, "frozen", False) else project_root / ".env"
         load_dotenv(config_path, override=False)
 
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or saved_api_key() or os.getenv("GEMINI_API_KEY")
         configured_model = chat_model or os.getenv("GEMINI_MODEL")
         # The previous experiment defaulted to 3.8 Flash, whose free-tier
         # output tokens are not available. Migrate that default to Flash-Lite.
