@@ -1,3 +1,4 @@
+import html
 import re
 from pathlib import Path
 
@@ -5,7 +6,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QMessageBox, QPushButton, QSplitter, QTextBrowser,
+    QMainWindow, QPushButton, QSplitter, QTextBrowser,
     QListWidget, QListWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -217,11 +218,8 @@ class MainWindow(QMainWindow):
         header = QHBoxLayout()
         title_group = QVBoxLayout()
         title_group.setSpacing(2)
-        title = QLabel("AI Meeting Assistant")
-        title.setObjectName("appTitle")
         subtitle = QLabel("Your live meeting and interview copilot")
         subtitle.setObjectName("appSubtitle")
-        title_group.addWidget(title)
         title_group.addWidget(subtitle)
         header.addLayout(title_group)
         header.addStretch()
@@ -519,11 +517,7 @@ class MainWindow(QMainWindow):
         self._start_worker(worker)
 
     def _resume_done(self, path, count):
-        self._set_status("Resume indexed with Gemini")
-        QMessageBox.information(
-            self, "Resume ready",
-            f"Resume indexed successfully.\n{count} sections added to local search."
-        )
+        self._set_status(f"Resume ready · {count} sections indexed")
 
     def ask(self):
         question = self.question.text().strip()
@@ -631,6 +625,14 @@ class MainWindow(QMainWindow):
             self.answer_view.setHtml(
                 "<p style='color:#9fb7d6;'>Generating answer…</p>"
             )
+        elif entry["status"] == "partial_error":
+            warning = (
+                "<hr><div style='color:#ffb4a8;'>"
+                "<b>Generation stopped before the answer was complete.</b> "
+                "The response above has been retained. You can continue by asking a follow-up."
+                "</div>"
+            )
+            self.answer_view.setHtml(format_response_html(entry["answer"]) + warning)
         elif entry["status"] == "error":
             self.answer_view.setHtml(
                 "<p style='color:#ffb4a8;'>This answer could not be generated.</p>"
@@ -642,16 +644,39 @@ class MainWindow(QMainWindow):
 
     def _question_error(self, question_id, error):
         entry = self.question_items.get(question_id)
+        partial_answer = self._streamed_answer if question_id == self._active_question_id else ""
         if entry is not None:
-            entry["status"] = "error"
+            # Keep whatever Gemini streamed before the request failed.
+            entry["answer"] = partial_answer
+            entry["status"] = "partial_error" if partial_answer.strip() else "error"
         self._stream_render_timer.stop()
         self.ask_button.setEnabled(True)
-        self._set_status("Error", warning=True)
+        self._set_status(
+            "Response interrupted" if partial_answer.strip() else "Error",
+            warning=True,
+        )
         if self._selected_question_id == question_id:
-            self.answer_view.setHtml(
-                "<p style='color:#ffb4a8;'>Answer generation failed. See the error dialog for details.</p>"
-            )
-        QMessageBox.critical(self, "AI Meeting Assistant error", str(error))
+            safe_error = html.escape(str(error)[:3000])
+            if partial_answer.strip():
+                self.answer_view.setHtml(
+                    format_response_html(partial_answer)
+                    + "<hr><div style='color:#ffb4a8;'>"
+                    "<b>Generation stopped unexpectedly.</b> "
+                    "Your partial response is saved above; it has not been discarded."
+                    "<br><span style='color:#9fb7a6;'>Technical details:</span>"
+                    f"<pre style='white-space:pre-wrap;color:#ffd7d2;'>{safe_error}</pre>"
+                    "</div>"
+                )
+            else:
+                self.answer_view.setHtml(
+                    "<div style='color:#ffb4a8;'>"
+                    "<h3>Response generation failed</h3>"
+                    "<p>No response text was received. Technical details:</p>"
+                    f"<pre style='white-space:pre-wrap;color:#ffd7d2;'>{safe_error}</pre>"
+                    "<p style='color:#9fb7a6;'>You can try again. Full details are saved in the application log.</p>"
+                    "</div>"
+                )
+        self.status.setToolTip(str(error))
 
     def _answer_stage(self, stage):
         self._set_status(stage)
@@ -760,7 +785,16 @@ class MainWindow(QMainWindow):
         self._stream_render_timer.stop()
         self.ask_button.setEnabled(True)
         self._set_status("Error", warning=True)
-        QMessageBox.critical(self, "AI Meeting Assistant error", str(error))
+        self.status.setToolTip(str(error))
+        safe_error = html.escape(str(error)[:3000])
+        self.answer_view.setHtml(
+            "<div style='color:#ffb4a8;'>"
+            "<h3>Operation failed</h3>"
+            "<p>Technical details:</p>"
+            f"<pre style='white-space:pre-wrap;color:#ffd7d2;'>{safe_error}</pre>"
+            "<p style='color:#9fb7a6;'>Full details are saved in the application log.</p>"
+            "</div>"
+        )
 
     def clear_chat(self):
         self.question_list.clear()
