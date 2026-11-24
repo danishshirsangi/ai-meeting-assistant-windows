@@ -118,12 +118,27 @@ jobs:
       - name: Generate SHA256 manifest
         shell: pwsh
         run: |
-          $root = (Resolve-Path 'dist/AI-Meeting-Assistant').Path
-          Get-ChildItem $root -Recurse -File -Force | Sort-Object FullName | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $([IO.Path]::GetRelativePath($root, $_.FullName))"
-          } | Set-Content security-reports/SHA256SUMS.txt
-          Copy-Item security-reports/SHA256SUMS.txt "$root/SHA256SUMS.txt"
+          @'
+          import hashlib
+          from pathlib import Path
+
+          root = Path("dist/AI-Meeting-Assistant").resolve(strict=True)
+          manifest = root / "SHA256SUMS.txt"
+          manifest.unlink(missing_ok=True)
+          files = sorted(p for p in root.rglob("*") if p.is_file())
+          if not files or not (root / "AI-Meeting-Assistant.exe").is_file():
+              raise RuntimeError("Portable build missing or empty")
+          lines = []
+          for path in files:
+              with path.open("rb") as stream:
+                  digest = hashlib.file_digest(stream, "sha256").hexdigest()
+              lines.append(f"{digest}  {path.relative_to(root).as_posix()}")
+          content = "\n".join(lines) + "\n"
+          manifest.write_text(content, encoding="utf-8")
+          Path("security-reports/SHA256SUMS.txt").write_text(content, encoding="utf-8")
+          print(f"SHA256 manifest generated for {len(files)} files")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'SHA256 manifest generation failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
