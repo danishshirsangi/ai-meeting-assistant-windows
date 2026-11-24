@@ -25,6 +25,28 @@ def main():
             "This repository contains the Windows build of AI Meeting Assistant."
         )
 
+    if "--packaging-smoke-test" in sys.argv:
+        try:
+            import soundcard
+            import sounddevice
+            import soundfile
+            import faster_whisper
+            import ctranslate2
+            import av
+            import onnxruntime
+            import pymupdf
+            from docx import Document
+            from pynput import keyboard
+            from google import genai
+            from PySide6 import QtSvg
+            from pygments.lexers import get_lexer_by_name
+            get_lexer_by_name("python")
+            logging.info("Frozen dependency smoke test passed")
+        except Exception:
+            logging.exception("Frozen dependency smoke test failed")
+            sys.exit(1)
+        sys.exit(0)
+
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
             "DanishShirsangi.AIMeetingAssistant.Windows"
