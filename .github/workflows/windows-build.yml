@@ -28,6 +28,9 @@ jobs:
       APP_VERSION: ${{ inputs.version || '1.0.0' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -44,6 +47,25 @@ jobs:
           python -m pip install -r "$env:RUNNER_TEMP/requirements-portable.txt" -r requirements-audio-windows.txt
           python -m pip install pytest pyinstaller
           python -m pip check
+      - name: Source, dependency and secret security checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force security-reports | Out-Null
+          python -m pip freeze | Set-Content security-reports/dependencies.txt
+          python -m venv "$env:RUNNER_TEMP/security-tools"
+          $scanner = "$env:RUNNER_TEMP/security-tools/Scripts/python.exe"
+          & $scanner -m pip install bandit pip-audit
+          if ($LASTEXITCODE -ne 0) { throw 'Security tools installation failed' }
+          $failed = $false
+          & $scanner -m bandit -r core audio ui main.py -f json -o security-reports/bandit.json -lll
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          & $scanner -m pip_audit -r security-reports/dependencies.txt --no-deps --disable-pip --format json --output security-reports/pip-audit.json
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          choco install gitleaks -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Gitleaks installation failed' }
+          gitleaks git . --redact=100 --report-format json --report-path security-reports/gitleaks.json
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          if ($failed) { throw 'Security audit failed; review security reports before distribution' }
       - name: Test
         run: python -m pytest -q
       - name: Package application
@@ -72,6 +94,42 @@ jobs:
           }
           Copy-Item packaging/PORTABLE-README.txt "$folder/README.txt"
           Copy-Item .env.example "$folder/data/.env.example"
+      - name: Remove smoke-test runtime logs
+        shell: pwsh
+        run: |
+          $log = 'dist/AI-Meeting-Assistant/logs/application.log'
+          if (Test-Path $log) { Remove-Item $log }
+      - name: Microsoft Defender malware scan
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $status = Get-MpComputerStatus
+          $status | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureVersion, AntivirusSignatureLastUpdated | ConvertTo-Json | Set-Content security-reports/defender-status.json
+          if (!$status.AMServiceEnabled -or !$status.AntivirusEnabled) { throw 'Defender unavailable; binary scan cannot be verified' }
+          Update-MpSignature
+          $scan = Join-Path $env:ProgramFiles 'Windows Defender/MpCmdRun.exe'
+          $platform = Get-ChildItem "$env:ProgramData/Microsoft/Windows Defender/Platform" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+          if ($platform -and (Test-Path (Join-Path $platform.FullName 'MpCmdRun.exe'))) { $scan = Join-Path $platform.FullName 'MpCmdRun.exe' }
+          $target = (Resolve-Path 'dist/AI-Meeting-Assistant').Path
+          & $scan -Scan -ScanType 3 -File $target -DisableRemediation 2>&1 | Tee-Object -FilePath security-reports/defender-scan.txt
+          $exitCode = $LASTEXITCODE
+          "Defender exit code: $exitCode" | Add-Content security-reports/defender-scan.txt
+          if ($exitCode -ne 0) { throw 'Defender scan failed or detected a threat' }
+      - name: Generate SHA256 manifest
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path 'dist/AI-Meeting-Assistant').Path
+          Get-ChildItem $root -Recurse -File -Force | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetRelativePath($root, $_.FullName))"
+          } | Set-Content security-reports/SHA256SUMS.txt
+          Copy-Item security-reports/SHA256SUMS.txt "$root/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports-${{ github.run_id }}
+          path: security-reports/
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: AI-Meeting-Assistant-v${{ env.APP_VERSION }}-Portable-x64

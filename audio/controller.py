@@ -1,4 +1,6 @@
 import os
+import ctypes
+from ctypes import wintypes
 import shutil
 import tempfile
 import threading
@@ -54,7 +56,21 @@ class AudioController(QObject):
                 if owner_pid == os.getpid():
                     continue
                 try:
-                    os.kill(owner_pid, 0)
+                    if os.name == "nt":
+                        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+                        kernel32.OpenProcess.restype = wintypes.HANDLE
+                        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+                        kernel32.CloseHandle.restype = wintypes.BOOL
+                        handle = kernel32.OpenProcess(0x1000, False, owner_pid)
+                        if handle:
+                            kernel32.CloseHandle(handle)
+                        elif ctypes.get_last_error() == 87:
+                            raise ProcessLookupError(owner_pid)
+                        else:
+                            continue  # Unknown or inaccessible process: preserve files.
+                    else:
+                        os.kill(owner_pid, 0)
                 except ProcessLookupError:
                     shutil.rmtree(folder, ignore_errors=True)
                 except PermissionError:

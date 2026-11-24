@@ -257,3 +257,7 @@ A Windows GitHub Actions workflow runs these checks on pushes and pull requests.
 ## Portable Windows application
 
 The Dev-Setup branch builds a portable x64 ZIP through GitHub Actions on relevant pushes. Download the artifact from a successful Build Windows Portable run, extract all files to a writable folder and launch AI-Meeting-Assistant.exe. No Python or installation is required. The first launch prompts for your own Gemini API key; the first transcription downloads Whisper. The data, models and logs directories travel with the app. The key is stored unencrypted in data/.env; never share a used folder containing personal data. Gemini requires internet. Obtain participant consent before recording. The unsigned executable may trigger SmartScreen. The manual workflow trigger requires the workflow on the default branch; pushes on Dev-Setup are supported without changing it.
+
+## Security checks
+
+Portable builds run high-severity Bandit checks, a dependency vulnerability audit, redacted Gitleaks history scanning, packaged import tests and a Microsoft Defender scan. A failed or unavailable required check blocks the portable artifact. Security reports are separate from the portable bundle. SHA256SUMS.txt records hashes of the packaged files before the manifest itself is added. These checks are not a guarantee of safety, nor a replacement for Windows hardware/runtime testing. API keys and resume data in the portable data directory remain unencrypted; do not share configured copies.

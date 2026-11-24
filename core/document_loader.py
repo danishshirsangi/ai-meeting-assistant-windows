@@ -6,8 +6,8 @@ def load_document(path):
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".pdf":
-        doc = pymupdf.open(path)
-        return "\n".join(page.get_text("text") for page in doc)
+        with pymupdf.open(path) as doc:
+            return "\n".join(page.get_text("text") for page in doc)
     if suffix == ".docx":
         doc = Document(path)
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
