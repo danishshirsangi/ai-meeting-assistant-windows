@@ -265,3 +265,5 @@ Portable builds run high-severity Bandit checks, a dependency vulnerability audi
 ## Settings
 
 Use the Settings button to open an embedded page in the main window (no separate dialog). Edit global shortcuts or replace the Gemini API key without restarting. Back to workspace preserves the current session; shortcuts activate on return. First launch without a key opens the embedded API key section. API key changes are saved to the local unencrypted .env file and checked asynchronously; the main status displays the connection result. Portable shortcuts are stored in data/shortcuts.json. Do not share configured copies.
+
+Appearance settings: adjust 0–100% visual dimming when Windows capture protection is confirmed on. Interactive controls retain at least 12% opacity and reveal on keyboard focus; optional hover reveal. Questions, answers, protection control and settings remain visible. Visual settings never call or change the Windows capture API. Preferences persist in appearance.json. If protection is off or unavailable the workspace is fully opaque.

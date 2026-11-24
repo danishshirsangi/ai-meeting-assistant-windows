@@ -76,3 +76,34 @@ def save_api_key(key):
     success, _, _ = set_key(str(folder / ".env"), "GEMINI_API_KEY", key)
     if not success:
         raise OSError("Could not save the API key.")
+
+DEFAULT_APPEARANCE = {"transparency": 60, "restore_on_hover": True}
+
+
+def normalize_appearance(values):
+    if not isinstance(values, dict):
+        return DEFAULT_APPEARANCE.copy()
+    amount = values.get("transparency", 60)
+    hover = values.get("restore_on_hover", True)
+    if type(amount) is not int:
+        amount = 60
+    return {"transparency": max(0, min(100, amount)),
+            "restore_on_hover": hover if type(hover) is bool else True}
+
+
+def load_appearance():
+    try:
+        return normalize_appearance(json.loads(
+            (config_dir() / "appearance.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        return DEFAULT_APPEARANCE.copy()
+
+
+def save_appearance(values):
+    values = normalize_appearance(values)
+    folder = config_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "appearance.json"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(values, indent=2), encoding="utf-8")
+    temporary.replace(path)

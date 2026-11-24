@@ -1,16 +1,19 @@
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QSlider,
     QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from core.user_settings import DEFAULT_SHORTCUTS, validate_shortcuts
+from core.user_settings import DEFAULT_SHORTCUTS, validate_shortcuts, DEFAULT_APPEARANCE, normalize_appearance
 
 
 class SettingsPage(QWidget):
-    def __init__(self, shortcuts, api_key, apply_shortcuts, apply_key, go_back, parent=None):
+    def __init__(self, shortcuts, api_key, apply_shortcuts, apply_key, go_back, parent=None, apply_appearance=None):
         super().__init__(parent)
         self.apply_shortcuts = apply_shortcuts
         self.apply_key = apply_key
+        self.apply_appearance = apply_appearance
+        self.appearance = DEFAULT_APPEARANCE.copy()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(16)
@@ -80,6 +83,77 @@ class SettingsPage(QWidget):
         api_form.addRow(self.api_status)
         tabs.addTab(api, "Gemini API key")
 
+        appearance = QWidget()
+        appearance_form = QFormLayout(appearance)
+        appearance_form.setContentsMargins(24, 24, 24, 24)
+        appearance_form.setVerticalSpacing(16)
+        explanation = QLabel("Adjust workspace dimming when capture protection is on. This is visual only and never changes Windows capture protection. Questions, answers and Settings stay fully visible.")
+        explanation.setWordWrap(True)
+        appearance_form.addRow(explanation)
+        self.transparency = QSlider(Qt.Orientation.Horizontal)
+        self.transparency.setRange(0, 100)
+        self.transparency.setValue(60)
+        self.transparency_value = QLabel("60%")
+        slider_row = QHBoxLayout()
+        slider_row.addWidget(self.transparency, 1)
+        slider_row.addWidget(self.transparency_value)
+        appearance_form.addRow("Interface transparency", slider_row)
+        minimum = QLabel("0% = solid · 100% = maximum dimming; controls retain 12% visibility.")
+        minimum.setWordWrap(True)
+        appearance_form.addRow(minimum)
+        self.restore_hover = QCheckBox("Restore full opacity on hover")
+        self.restore_hover.setChecked(True)
+        appearance_form.addRow(self.restore_hover)
+        reset_appearance = QPushButton("Reset to default")
+        reset_appearance.clicked.connect(self.reset_appearance)
+        appearance_form.addRow(reset_appearance)
+        self.appearance_status = QLabel("")
+        appearance_form.addRow(self.appearance_status)
+        self.appearance_timer = QTimer(self)
+        self.appearance_timer.setSingleShot(True)
+        self.appearance_timer.setInterval(200)
+        self.appearance_timer.timeout.connect(self.flush_appearance)
+        self.transparency.valueChanged.connect(self.appearance_changed)
+        self.restore_hover.toggled.connect(self.appearance_changed)
+        tabs.addTab(appearance, "Appearance")
+
+
+    def set_appearance(self, values):
+        self.appearance_timer.stop()
+        self.appearance = normalize_appearance(values)
+        self.transparency.blockSignals(True)
+        self.restore_hover.blockSignals(True)
+        self.transparency.setValue(self.appearance["transparency"])
+        self.restore_hover.setChecked(self.appearance["restore_on_hover"])
+        self.transparency.blockSignals(False)
+        self.restore_hover.blockSignals(False)
+        self.transparency_value.setText(f'{self.appearance["transparency"]}%')
+        self.appearance_status.clear()
+
+    def appearance_changed(self, _value=None):
+        self.transparency_value.setText(f"{self.transparency.value()}%")
+        self.appearance_timer.start()
+
+    def flush_appearance(self):
+        self.appearance_timer.stop()
+        values = {"transparency": self.transparency.value(),
+                  "restore_on_hover": self.restore_hover.isChecked()}
+        if values == self.appearance:
+            return True
+        try:
+            if self.apply_appearance:
+                self.apply_appearance(values)
+        except OSError:
+            self.appearance_status.setText("Unable to save appearance. Check folder permissions.")
+            return False
+        self.appearance = values
+        self.appearance_status.setText("Saved")
+        return True
+
+    def reset_appearance(self):
+        self.transparency.setValue(DEFAULT_APPEARANCE["transparency"])
+        self.restore_hover.setChecked(DEFAULT_APPEARANCE["restore_on_hover"])
+        self.flush_appearance()
 
     def refresh(self, shortcuts, api_key, status, api_tab=False):
         self.record.setText(shortcuts["record"])

@@ -18,7 +18,8 @@ from ui.windows_window_privacy import set_window_capture_exclusion
 from ui.rich_text import format_response_html
 from ui.worker import FunctionWorker
 from ui.settings_dialog import SettingsPage
-from core.user_settings import load_shortcuts, save_shortcuts, save_api_key
+from core.user_settings import load_shortcuts, save_shortcuts, save_api_key, load_appearance, save_appearance
+from ui.focus_appearance import FocusAppearance
 
 
 class MainWindow(QMainWindow):
@@ -181,6 +182,10 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
         self._active_workers = set()
         self.shortcuts = load_shortcuts()
+        self.appearance = load_appearance()
+        self.focus_appearance = FocusAppearance(self)
+        self._capture_privacy_state = 'off'
+        self._status_warning = False
         self.gemini = GeminiClient()
         data_dir = Path(sys.executable).resolve().parent / "data"
         self.rag = ResumeRAG(self.gemini, persist_dir=data_dir / "vector_db_gemini" if getattr(sys, "frozen", False) else "vector_db_gemini")
@@ -244,6 +249,7 @@ class MainWindow(QMainWindow):
             return
         if self.audio:
             self.audio.stop_hotkey_listener()
+        self.settings_page.set_appearance(self.appearance)
         self.settings_page.refresh(self.shortcuts, self.gemini.api_key,
                                    self.status.text(), api_tab=api_tab)
         self.pages.setCurrentWidget(self.settings_page)
@@ -251,10 +257,23 @@ class MainWindow(QMainWindow):
     def _close_settings(self):
         if self.pages.currentWidget() is not self.settings_page:
             return
+        if not self.settings_page.flush_appearance():
+            return
         self.settings_page.clear_sensitive_fields()
         self.pages.setCurrentWidget(self.workspace_page)
         if self.audio:
             self.audio.start_hotkey_listener(self.shortcuts)
+
+    def _save_appearance(self, values):
+        save_appearance(values)
+        self.appearance = values
+        self._refresh_focus_appearance()
+
+    def _refresh_focus_appearance(self):
+        self.focus_appearance.configure(self._capture_privacy_state == 'on', self.appearance)
+        if hasattr(self, '_audio_panel'):
+            active = self._capture_privacy_state == 'on' and self.appearance['transparency'] > 0
+            self._audio_panel.setStyleSheet('QFrame#surfacePanel { background: #0c1510; border-color: #182a20; }' if active else '')
 
     def _make_panel(self, title, hint=None):
         panel = QFrame()
@@ -454,14 +473,28 @@ class MainWindow(QMainWindow):
         self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.footer)
         self.settings_page = SettingsPage(self.shortcuts, None, self._save_shortcuts,
-                                          self._replace_api_key, self._close_settings, self.pages)
+                                          self._replace_api_key, self._close_settings, self.pages,
+                                          apply_appearance=self._save_appearance)
         self.pages.addWidget(self.settings_page)
         self.pages.setCurrentWidget(self.workspace_page)
+        for widget in (subtitle, model_label, microphone_label, self.footer):
+            self.focus_appearance.add(widget, interactive=False)
+        for widget in (self.model, upload, clear, settings, self.hide_button,
+                       self.microphone, self.refresh_microphones_button,
+                       self.question, self.ask_button):
+            self.focus_appearance.add(widget)
+        self.focus_appearance.add(self.record_button, keep_visible=lambda: bool(
+            self.audio and self.audio.is_recording))
+        self.focus_appearance.add(self.audio_hint, keep_visible=lambda: bool(
+            self.audio and self.audio.is_recording) or self._status_warning)
+        self.focus_appearance.add(self.status, keep_visible=lambda: self._status_warning)
+        self._focus_panels = (questions_panel, answer_panel)
+        self._audio_panel = recording_panel
+        self._status_warning = False
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._capture_privacy_enabled:
-            self._apply_capture_privacy()
+        self._apply_capture_privacy()
 
     def _toggle_capture_privacy(self):
         self._capture_privacy_enabled = not self._capture_privacy_enabled
@@ -493,11 +526,20 @@ class MainWindow(QMainWindow):
                 "Meeting-app behaviour varies."
             )
 
+        self._capture_privacy_state = state if ok else "unavailable"
+        if not ok and not enabled:
+            label = "SCREEN CAPTURE PROTECTION: UNAVAILABLE"
+            state = "unavailable"
         self.privacy_button.setText(label)
         self.privacy_button.setToolTip(tooltip)
         self.privacy_button.setProperty("privacyState", state)
         self.privacy_button.style().unpolish(self.privacy_button)
         self.privacy_button.style().polish(self.privacy_button)
+        self._refresh_focus_appearance()
+        active = self._capture_privacy_state == 'on'
+        for panel in self._focus_panels:
+            panel.setStyleSheet('QFrame#surfacePanel { border: 1px solid #38d866; }' if active else '')
+        self._audio_panel.setStyleSheet('QFrame#surfacePanel { background: #0c1510; border-color: #182a20; }' if active and self.appearance['transparency'] else '')
 
     def _toggle_window_visibility(self):
         """Hide or restore the main window without touching audio or workers."""
@@ -587,7 +629,9 @@ class MainWindow(QMainWindow):
             self.settings_page.api_status.setText("Connection failed. Check the API key, model access and internet connection.")
 
     def _set_status(self, text, warning=False):
+        self._status_warning = bool(warning)
         self.status.setText(text)
+        self._refresh_focus_appearance()
         if hasattr(self, "settings_page"):
             self.settings_page.connection_status.setText(text)
         self.status.setStyleSheet(
@@ -917,6 +961,8 @@ class MainWindow(QMainWindow):
         self._set_status("Ready")
 
     def closeEvent(self, event):
+        if self.pages.currentWidget() is self.settings_page:
+            self.settings_page.flush_appearance()
         self._stream_render_timer.stop()
         if self.audio is not None:
             self.audio.shutdown()

@@ -9,6 +9,7 @@ on:
       - 'core/**'
       - 'audio/**'
       - 'ui/**'
+      - 'tests/**'
       - 'assets/**'
       - 'requirements*.txt'
   workflow_dispatch:
