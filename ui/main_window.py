@@ -1,5 +1,4 @@
 import html
-import os
 import sys
 import re
 from pathlib import Path
@@ -180,7 +179,7 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
         self._active_workers = set()
         self.gemini = GeminiClient()
-        data_dir = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "AI Meeting Assistant"
+        data_dir = Path(sys.executable).resolve().parent / "data"
         self.rag = ResumeRAG(self.gemini, persist_dir=data_dir / "vector_db_gemini" if getattr(sys, "frozen", False) else "vector_db_gemini")
         self.generator = AnswerGenerator(self.gemini, self.rag)
         self.history = []

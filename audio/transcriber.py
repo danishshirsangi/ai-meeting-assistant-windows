@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 _MODEL = None
@@ -19,7 +20,12 @@ def _get_model():
         # The model downloads on first use and is cached by Hugging Face.
         # CPU int8 is the baseline for broad compatibility with Windows PCs.
         logger.info("Loading local faster-whisper base model (first run may download it)")
-        _MODEL = WhisperModel("base", device="cpu", compute_type="int8")
+        options = {}
+        if getattr(sys, "frozen", False):
+            cache = Path(sys.executable).resolve().parent / "models"
+            cache.mkdir(parents=True, exist_ok=True)
+            options["download_root"] = str(cache)
+        _MODEL = WhisperModel("base", device="cpu", compute_type="int8", **options)
     return _MODEL
 
 

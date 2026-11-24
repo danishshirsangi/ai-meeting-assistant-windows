@@ -254,6 +254,6 @@ A Windows GitHub Actions workflow runs these checks on pushes and pull requests.
 - Add selection for system loopback sources.
 - Expand Windows hardware integration tests.
 
-## Windows installer
+## Portable Windows application
 
-Open Actions → Build Windows Installer → Run workflow on mybranch, enter a version (e.g. 1.0.0), and download the setup artifact after a successful run. Extract the ZIP and run Setup.exe. Python is bundled; Whisper downloads on first use. The installed app prompts for your own Gemini key if missing. Its local configuration (.env, not encrypted) and resume index are under %LOCALAPPDATA%\AI Meeting Assistant. Do not share this directory. The installer is unsigned and Windows may warn. Obtain participant consent before recording.
+The Dev-Setup branch builds a portable x64 ZIP through GitHub Actions on relevant pushes. Download the artifact from a successful Build Windows Portable run, extract all files to a writable folder and launch AI-Meeting-Assistant.exe. No Python or installation is required. The first launch prompts for your own Gemini API key; the first transcription downloads Whisper. The data, models and logs directories travel with the app. The key is stored unencrypted in data/.env; never share a used folder containing personal data. Gemini requires internet. Obtain participant consent before recording. The unsigned executable may trigger SmartScreen. The manual workflow trigger requires the workflow on the default branch; pushes on Dev-Setup are supported without changing it.

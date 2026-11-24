@@ -21,7 +21,7 @@ class GeminiClient:
 
     def __init__(self, api_key=None, chat_model=None, embedding_model=None):
         project_root = Path(__file__).resolve().parents[1]
-        config_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "AI Meeting Assistant" / ".env" if getattr(sys, "frozen", False) else project_root / ".env"
+        config_path = Path(sys.executable).resolve().parent / "data" / ".env" if getattr(sys, "frozen", False) else project_root / ".env"
         load_dotenv(config_path, override=False)
 
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")

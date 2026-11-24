@@ -10,7 +10,13 @@ from ui.main_window import MainWindow
 
 
 def main():
+    log_options = {}
+    if getattr(sys, "frozen", False):
+        log_dir = Path(sys.executable).resolve().parent / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_options = {"filename": str(log_dir / "application.log"), "encoding": "utf-8"}
     logging.basicConfig(
+        **log_options,
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )

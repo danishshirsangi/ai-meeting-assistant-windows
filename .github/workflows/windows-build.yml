@@ -1,9 +1,20 @@
-name: Build Windows Installer
+name: Build Windows Portable
 on:
+  push:
+    branches: [Dev-Setup]
+    paths:
+      - '.github/workflows/windows-build.yml'
+      - 'packaging/**'
+      - 'main.py'
+      - 'core/**'
+      - 'audio/**'
+      - 'ui/**'
+      - 'assets/**'
+      - 'requirements*.txt'
   workflow_dispatch:
     inputs:
       version:
-        description: Installer version (major.minor.patch)
+        description: Portable version (major.minor.patch)
         default: '1.0.0'
         required: true
         type: string
@@ -14,7 +25,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
     env:
-      APP_VERSION: ${{ inputs.version }}
+      APP_VERSION: ${{ inputs.version || '1.0.0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,17 +49,19 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onedir --windowed --name AI-Meeting-Assistant --add-data "assets;assets" --collect-all faster_whisper --collect-all ctranslate2 --collect-all av --collect-all soundcard --collect-all sounddevice --collect-all soundfile --collect-all _sounddevice_data --collect-all _soundfile_data --collect-all pynput --collect-all google.genai --collect-all pygments main.py
           if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-      - name: Create installer
+      - name: Prepare portable folder
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "/DAppVersion=$env:APP_VERSION" installer/setup.iss
-          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-          Get-FileHash release/*.exe -Algorithm SHA256 | Format-List
+          $folder = "dist/AI-Meeting-Assistant"
+          if (!(Test-Path "$folder/AI-Meeting-Assistant.exe")) { throw 'Missing executable' }
+          foreach ($dir in @('data','models','logs')) {
+            New-Item -ItemType Directory -Force "$folder/$dir" | Out-Null
+          }
+          Copy-Item packaging/PORTABLE-README.txt "$folder/README.txt"
+          Copy-Item .env.example "$folder/data/.env.example"
       - uses: actions/upload-artifact@v4
         with:
-          name: AI-Meeting-Assistant-${{ inputs.version }}-x64-Setup
-          path: release/*.exe
+          name: AI-Meeting-Assistant-v${{ env.APP_VERSION }}-Portable-x64
+          path: dist/AI-Meeting-Assistant/
+          include-hidden-files: true
           if-no-files-found: error
