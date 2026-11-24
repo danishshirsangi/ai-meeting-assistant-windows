@@ -39,5 +39,6 @@ class AnswerGenerator:
             build_messages(instruction, chunks, history),
             temperature=0.25,
             on_chunk=on_chunk,
+            on_stage=on_stage,
         )
         return transcript, answer
