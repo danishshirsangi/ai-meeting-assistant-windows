@@ -1,24 +1,41 @@
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QLabel, QLineEdit,
+    QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from core.user_settings import DEFAULT_SHORTCUTS, validate_shortcuts
 
 
-class SettingsDialog(QDialog):
-    def __init__(self, shortcuts, api_key, apply_shortcuts, apply_key, parent=None):
+class SettingsPage(QWidget):
+    def __init__(self, shortcuts, api_key, apply_shortcuts, apply_key, go_back, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.setMinimumWidth(490)
         self.apply_shortcuts = apply_shortcuts
         self.apply_key = apply_key
         layout = QVBoxLayout(self)
-        tabs = QTabWidget()
-        layout.addWidget(tabs)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(16)
+        header = QHBoxLayout()
+        back = QPushButton("Back to workspace")
+        back.setObjectName("settingsBackButton")
+        back.clicked.connect(go_back)
+        header.addWidget(back)
+        title = QLabel("Settings")
+        title.setObjectName("appTitle")
+        header.addWidget(title)
+        header.addStretch()
+        self.connection_status = QLabel("")
+        self.connection_status.setObjectName("status")
+        header.addWidget(self.connection_status)
+        layout.addLayout(header)
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #25432d; background: #101a13; } QTabBar::tab { background: #17271b; padding: 12px 20px; color: #cfe9d4; } QTabBar::tab:selected { background: #285737; color: #ffffff; }")
+        tabs = self.tabs
+        layout.addWidget(tabs, 1)
 
         keys = QWidget()
         form = QFormLayout(keys)
+        form.setContentsMargins(24, 24, 24, 24)
+        form.setVerticalSpacing(16)
         hint = QLabel("Enter a combination such as Ctrl+Alt+R. Use Ctrl or Alt with a letter, digit or F1–F12.")
         hint.setWordWrap(True)
         form.addRow(hint)
@@ -39,6 +56,8 @@ class SettingsDialog(QDialog):
 
         api = QWidget()
         api_form = QFormLayout(api)
+        api_form.setContentsMargins(24, 24, 24, 24)
+        api_form.setVerticalSpacing(16)
         note = QLabel("Your key is stored in the local .env file, not encrypted. Do not share your configured portable folder.")
         note.setWordWrap(True)
         api_form.addRow(note)
@@ -46,7 +65,7 @@ class SettingsDialog(QDialog):
         self.api.setEchoMode(QLineEdit.EchoMode.Password)
         self.api.setPlaceholderText("Enter Gemini API key")
         api_form.addRow("Gemini API key", self.api)
-        show = QPushButton("Show key")
+        show = self.show_key = QPushButton("Show key")
         show.setCheckable(True)
         show.toggled.connect(lambda checked: (
             self.api.setEchoMode(QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password),
@@ -60,9 +79,22 @@ class SettingsDialog(QDialog):
         self.api_status.setWordWrap(True)
         api_form.addRow(self.api_status)
         tabs.addTab(api, "Gemini API key")
-        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        close.rejected.connect(self.reject)
-        layout.addWidget(close)
+
+
+    def refresh(self, shortcuts, api_key, status, api_tab=False):
+        self.record.setText(shortcuts["record"])
+        self.visibility.setText(shortcuts["visibility"])
+        self.show_key.setChecked(False)
+        self.api.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api.setText(api_key or "")
+        self.key_status.clear()
+        self.api_status.clear()
+        self.connection_status.setText(status)
+        self.tabs.setCurrentIndex(1 if api_tab else 0)
+
+    def clear_sensitive_fields(self):
+        self.show_key.setChecked(False)
+        self.api.clear()
 
     def reset_shortcuts(self):
         self.record.setText(DEFAULT_SHORTCUTS["record"])
@@ -77,7 +109,7 @@ class SettingsDialog(QDialog):
             return
         self.record.setText(values["record"])
         self.visibility.setText(values["visibility"])
-        self.key_status.setText("Saved. Shortcuts activate when Settings closes.")
+        self.key_status.setText("Saved. Shortcuts activate when you return to the workspace.")
 
     def save_api(self):
         try:
@@ -87,4 +119,4 @@ class SettingsDialog(QDialog):
         except Exception:
             self.api_status.setText("Could not save key. Check folder permissions and try again.")
         else:
-            self.api_status.setText("Saved. Connection check started; see the main window status.")
+            self.api_status.setText("Saved. Checking Gemini connection…")

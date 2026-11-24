@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QInputDialog, QMainWindow, QPushButton, QSplitter, QTextBrowser,
+    QMainWindow, QPushButton, QSplitter, QStackedWidget, QTextBrowser,
     QListWidget, QListWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -17,7 +17,7 @@ from core.resume_rag import ResumeRAG
 from ui.windows_window_privacy import set_window_capture_exclusion
 from ui.rich_text import format_response_html
 from ui.worker import FunctionWorker
-from ui.settings_dialog import SettingsDialog
+from ui.settings_dialog import SettingsPage
 from core.user_settings import load_shortcuts, save_shortcuts, save_api_key
 
 
@@ -202,16 +202,13 @@ class MainWindow(QMainWindow):
         self._stream_render_timer.timeout.connect(self._render_streamed_answer)
 
         self._build_ui()
-        if getattr(sys, "frozen", False) and not self.gemini.api_key:
-            key, accepted = QInputDialog.getText(self, "Gemini configuration", "Enter your Gemini API key (used for cloud AI):", QLineEdit.EchoMode.Password)
-            if accepted and key.strip() and not any(ch in key for ch in "\r\n"):
-                try:
-                    self._replace_api_key(key, check=False)
-                except (ValueError, OSError):
-                    self._set_status("API key not saved — open Settings", warning=True)
         self._update_shortcut_labels()
         self._setup_audio()
-        self._check_server()
+        if getattr(sys, "frozen", False) and not self.gemini.api_key:
+            self._set_status("Gemini API key missing — configure in Settings", warning=True)
+            self._open_settings(api_tab=True)
+        else:
+            self._check_server()
 
     def _update_shortcut_labels(self):
         record = self.shortcuts["record"]
@@ -239,19 +236,25 @@ class MainWindow(QMainWindow):
             self._set_status("Checking Gemini connection…")
             self._check_server()
 
-    def _open_settings(self):
+    def _open_settings(self, checked=False, *, api_tab=False):
+        if self.pages.currentWidget() is self.settings_page:
+            return
         if self.audio and self.audio.is_recording:
             self._set_status("Stop recording before opening Settings", warning=True)
             return
         if self.audio:
             self.audio.stop_hotkey_listener()
-        try:
-            dialog = SettingsDialog(self.shortcuts, self.gemini.api_key,
-                                    self._save_shortcuts, self._replace_api_key, self)
-            dialog.exec()
-        finally:
-            if self.audio:
-                self.audio.start_hotkey_listener(self.shortcuts)
+        self.settings_page.refresh(self.shortcuts, self.gemini.api_key,
+                                   self.status.text(), api_tab=api_tab)
+        self.pages.setCurrentWidget(self.settings_page)
+
+    def _close_settings(self):
+        if self.pages.currentWidget() is not self.settings_page:
+            return
+        self.settings_page.clear_sensitive_fields()
+        self.pages.setCurrentWidget(self.workspace_page)
+        if self.audio:
+            self.audio.start_hotkey_listener(self.shortcuts)
 
     def _make_panel(self, title, hint=None):
         panel = QFrame()
@@ -280,7 +283,11 @@ class MainWindow(QMainWindow):
         central_palette = central.palette()
         central_palette.setColor(QPalette.ColorRole.Window, QColor("#080d09"))
         central.setPalette(central_palette)
-        self.setCentralWidget(central)
+        self.pages = QStackedWidget()
+        self.pages.setObjectName("appRoot")
+        self.setCentralWidget(self.pages)
+        self.workspace_page = central
+        self.pages.addWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(22, 18, 22, 18)
         root.setSpacing(14)
@@ -337,6 +344,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.privacy_button)
         toolbar.addStretch()
         settings = QPushButton("Settings")
+        settings.setObjectName("settingsButton")
         settings.clicked.connect(self._open_settings)
         toolbar.addWidget(settings)
         toolbar.addWidget(self.hide_button)
@@ -445,6 +453,10 @@ class MainWindow(QMainWindow):
         self.footer.setObjectName("sectionHint")
         self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.footer)
+        self.settings_page = SettingsPage(self.shortcuts, None, self._save_shortcuts,
+                                          self._replace_api_key, self._close_settings, self.pages)
+        self.pages.addWidget(self.settings_page)
+        self.pages.setCurrentWidget(self.workspace_page)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -571,9 +583,13 @@ class MainWindow(QMainWindow):
         else:
             self._set_status("Gemini unavailable — check connection / key", warning=True)
         self.status.setToolTip(message)
+        if self.pages.currentWidget() is self.settings_page:
+            self.settings_page.api_status.setText("Connection failed. Check the API key, model access and internet connection.")
 
     def _set_status(self, text, warning=False):
         self.status.setText(text)
+        if hasattr(self, "settings_page"):
+            self.settings_page.connection_status.setText(text)
         self.status.setStyleSheet(
             "color: #ffd58a; background: #382c1b; border: 1px solid #75552b; "
             "border-radius: 10px; padding: 5px 10px;"
@@ -582,6 +598,8 @@ class MainWindow(QMainWindow):
 
     def _gemini_ok(self, data):
         self._set_status("Gemini connected")
+        if self.pages.currentWidget() is self.settings_page:
+            self.settings_page.api_status.setText("Gemini connected successfully.")
         names = [model.get("name") for model in data.get("models", []) if model.get("name")]
         if names:
             self.model.clear()

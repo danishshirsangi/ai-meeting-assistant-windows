@@ -264,4 +264,4 @@ Portable builds run high-severity Bandit checks, a dependency vulnerability audi
 
 ## Settings
 
-Use the Settings button to edit global keyboard shortcuts or replace the Gemini API key without restarting. Shortcuts activate after closing Settings. API key changes are saved to the local unencrypted .env file and checked asynchronously; the main status displays the connection result. Portable shortcuts are stored in data/shortcuts.json. Do not share configured copies.
+Use the Settings button to open an embedded page in the main window (no separate dialog). Edit global shortcuts or replace the Gemini API key without restarting. Back to workspace preserves the current session; shortcuts activate on return. First launch without a key opens the embedded API key section. API key changes are saved to the local unencrypted .env file and checked asynchronously; the main status displays the connection result. Portable shortcuts are stored in data/shortcuts.json. Do not share configured copies.
