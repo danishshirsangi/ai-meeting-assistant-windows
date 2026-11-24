@@ -15,6 +15,7 @@ class AnswerGenerator:
         return self.llm_client.chat(
             build_messages(question, chunks, history),
             on_chunk=on_chunk,
+            on_stage=on_stage,
         )
 
     def answer_from_transcript(self, transcript, history, on_chunk=None, on_stage=None):
@@ -38,5 +39,6 @@ class AnswerGenerator:
             build_messages(instruction, chunks, history),
             temperature=0.25,
             on_chunk=on_chunk,
+            on_stage=on_stage,
         )
         return transcript, answer
