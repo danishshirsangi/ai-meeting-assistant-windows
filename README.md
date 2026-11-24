@@ -253,7 +253,3 @@ A Windows GitHub Actions workflow runs these checks on pushes and pull requests.
 - Improve long-recording segmentation and question-level audio processing.
 - Add selection for system loopback sources.
 - Expand Windows hardware integration tests.
-
-## Windows installer
-
-Open Actions → Build Windows Installer → Run workflow on mybranch, enter a version (e.g. 1.0.0), and download the setup artifact after a successful run. Extract the ZIP and run Setup.exe. Python is bundled; Whisper downloads on first use. The installed app prompts for your own Gemini key if missing. Its local configuration (.env, not encrypted) and resume index are under %LOCALAPPDATA%\AI Meeting Assistant. Do not share this directory. The installer is unsigned and Windows may warn. Obtain participant consent before recording.

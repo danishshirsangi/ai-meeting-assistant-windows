@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,8 +20,7 @@ class GeminiClient:
 
     def __init__(self, api_key=None, chat_model=None, embedding_model=None):
         project_root = Path(__file__).resolve().parents[1]
-        config_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "AI Meeting Assistant" / ".env" if getattr(sys, "frozen", False) else project_root / ".env"
-        load_dotenv(config_path, override=False)
+        load_dotenv(project_root / ".env", override=False)
 
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         configured_model = chat_model or os.getenv("GEMINI_MODEL")

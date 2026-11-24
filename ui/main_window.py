@@ -1,6 +1,4 @@
 import html
-import os
-import sys
 import re
 from pathlib import Path
 
@@ -8,7 +6,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QInputDialog, QMainWindow, QPushButton, QSplitter, QTextBrowser,
+    QMainWindow, QPushButton, QSplitter, QTextBrowser,
     QListWidget, QListWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -180,8 +178,7 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
         self._active_workers = set()
         self.gemini = GeminiClient()
-        data_dir = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "AI Meeting Assistant"
-        self.rag = ResumeRAG(self.gemini, persist_dir=data_dir / "vector_db_gemini" if getattr(sys, "frozen", False) else "vector_db_gemini")
+        self.rag = ResumeRAG(self.gemini, persist_dir="vector_db_gemini")
         self.generator = AnswerGenerator(self.gemini, self.rag)
         self.history = []
         self.question_items = {}
@@ -200,14 +197,6 @@ class MainWindow(QMainWindow):
         self._stream_render_timer.timeout.connect(self._render_streamed_answer)
 
         self._build_ui()
-        if getattr(sys, "frozen", False) and not self.gemini.api_key:
-            key, accepted = QInputDialog.getText(self, "Gemini configuration", "Enter your Gemini API key (used for cloud AI):", QLineEdit.EchoMode.Password)
-            if accepted and key.strip() and not any(ch in key for ch in "\r\n"):
-                data_dir.mkdir(parents=True, exist_ok=True)
-                (data_dir / ".env").write_text("GEMINI_API_KEY=" + key.strip() + "\n", encoding="utf-8")
-                self.gemini = GeminiClient(api_key=key.strip())
-                self.rag.embedding_client = self.gemini
-                self.generator = AnswerGenerator(self.gemini, self.rag)
         self._setup_audio()
         self._check_server()
 
