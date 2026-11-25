@@ -270,4 +270,4 @@ Appearance settings: adjust 0–100% visual dimming when Windows capture protect
 
 Settings uses three sidebar sections: Keyboard Shortcuts, Gemini API Key and Appearance. Click a shortcut field and press a chord (hold modifiers while pressing the final key); plus separators appear automatically, Escape cancels. Appearance includes a live visual preview. The preview does not change capture protection.
 
-Workspace appearance now uses per-pixel desktop transparency on Windows; Settings and question/answer surfaces remain opaque. The custom title bar supports dragging, maximizing/restoring and closing; the lower-right grip resizes the window. Tooltips are disabled. Capture protection remains best effort; verify compatibility with Windows compositing and your capture software.
+Workspace appearance now uses per-pixel desktop transparency on Windows; Settings and question/answer surfaces remain opaque. The custom title bar supports dragging, maximizing/restoring and closing; all four edges and four corners resize the window. Tooltips are disabled. Capture protection remains best effort; verify compatibility with Windows compositing and your capture software.

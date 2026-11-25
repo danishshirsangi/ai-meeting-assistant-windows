@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QSplitter, QStackedWidget, QTextBrowser, QSizeGrip,
+    QMainWindow, QPushButton, QSplitter, QStackedWidget, QTextBrowser,
     QListWidget, QListWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -20,7 +20,7 @@ from ui.worker import FunctionWorker
 from ui.settings_dialog import SettingsPage
 from core.user_settings import load_shortcuts, save_shortcuts, save_api_key, load_appearance, save_appearance
 from ui.focus_appearance import FocusAppearance
-from ui.window_chrome import TitleBar, background_alpha
+from ui.window_chrome import TitleBar, ResizableFrame, background_alpha
 
 
 class MainWindow(QMainWindow):
@@ -317,14 +317,7 @@ class MainWindow(QMainWindow):
         shell_layout.setSpacing(0)
         shell_layout.addWidget(TitleBar(self))
         shell_layout.addWidget(self.pages, 1)
-        grip_row = QHBoxLayout()
-        grip_row.setContentsMargins(0, 0, 2, 2)
-        grip_row.addStretch()
-        grip = QSizeGrip(self)
-        grip.setStyleSheet('background: #102219;')
-        grip_row.addWidget(grip)
-        shell_layout.addLayout(grip_row)
-        self.setCentralWidget(shell)
+        self.setCentralWidget(ResizableFrame(self, shell))
         self.workspace_page = central
         self.pages.addWidget(central)
         root = QVBoxLayout(central)
