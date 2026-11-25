@@ -1,10 +1,48 @@
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPen, QFont
+from ui.shortcut_capture import ShortcutCapture
 from PySide6.QtWidgets import (
-    QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QSlider,
-    QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QSlider, QFrame,
+    QPushButton, QTabWidget, QVBoxLayout, QWidget, QStyle, QApplication,
 )
 
 from core.user_settings import DEFAULT_SHORTCUTS, validate_shortcuts, DEFAULT_APPEARANCE, normalize_appearance
+
+
+class AppearancePreview(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.amount = 60
+        self.setMinimumHeight(165)
+        self.setAccessibleName("Workspace appearance preview")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.scale(self.width() / 320, self.height() / 165)
+        painter.setPen(QPen(QColor("#36664a"), 1))
+        painter.setBrush(QColor("#071710"))
+        painter.drawRoundedRect(1, 1, 318, 163, 9, 9)
+        painter.setOpacity(max(.12, 1 - self.amount / 100))
+        painter.setBrush(QColor("#31523e"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        for x in (10, 85, 160, 235):
+            painter.drawRoundedRect(x, 12, 67, 16, 4, 4)
+        painter.drawRoundedRect(10, 140, 300, 15, 4, 4)
+        painter.setOpacity(1)
+        painter.setBrush(QColor("#102b1b"))
+        painter.setPen(QPen(QColor("#42ce70"), 1))
+        painter.drawRoundedRect(10, 36, 90, 95, 7, 7)
+        painter.drawRoundedRect(106, 36, 204, 95, 7, 7)
+        painter.setPen(QColor("#effff2"))
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.drawText(20, 53, "Questions")
+        painter.drawText(116, 53, "Answer")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#496b57"))
+        for y in (65, 80, 95):
+            painter.drawRoundedRect(116, y, 170 if y != 95 else 105, 5, 2, 2)
+        painter.end()
 
 
 class SettingsPage(QWidget):
@@ -31,25 +69,74 @@ class SettingsPage(QWidget):
         header.addWidget(self.connection_status)
         layout.addLayout(header)
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #25432d; background: #101a13; } QTabBar::tab { background: #17271b; padding: 12px 20px; color: #cfe9d4; } QTabBar::tab:selected { background: #285737; color: #ffffff; }")
+        self.tabs.setTabPosition(QTabWidget.TabPosition.West)
+        self.tabs.tabBar().hide()
+        self.setStyleSheet("""
+            QFrame#settingsNav, QFrame#settingsCard { background: #0b2418; border: 1px solid #28573b; border-radius: 12px; }
+            QPushButton#settingsNavButton { text-align: left; padding: 13px 10px; font-size: 13px; border: 1px solid transparent; background: transparent; }
+            QPushButton#settingsNavButton:checked { background: #1b492d; border: 1px solid #78ed8d; color: #f4fff6; }
+            QLabel#settingsHeading { font-size: 22px; font-weight: 800; }
+            QLineEdit:focus { border: 2px solid #70f28b; }
+            QSlider::groove:horizontal { height: 8px; background: #25432d; border-radius: 4px; }
+            QSlider::sub-page:horizontal { background: #48d764; border-radius: 4px; }
+            QSlider::handle:horizontal { background: #ecfff0; width: 18px; margin: -5px 0; border-radius: 9px; }
+            QTabWidget::pane { background: #0b1911; border: 1px solid #28573b; border-radius: 12px; }
+        """)
         tabs = self.tabs
-        layout.addWidget(tabs, 1)
+        body = QHBoxLayout()
+        body.setSpacing(14)
+        nav = QFrame()
+        nav.setObjectName("settingsNav")
+        nav.setFixedWidth(210)
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(10, 12, 10, 12)
+        self.nav_buttons = []
+        for index, (label, icon) in enumerate((
+            ("Keyboard Shortcuts", QStyle.StandardPixmap.SP_ComputerIcon),
+            ("Gemini API Key", QStyle.StandardPixmap.SP_DialogApplyButton),
+            ("Appearance", QStyle.StandardPixmap.SP_DesktopIcon),
+        )):
+            button = QPushButton(label)
+            button.setObjectName("settingsNavButton")
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setIcon(self.style().standardIcon(icon))
+            button.clicked.connect(lambda checked=False, i=index: self.tabs.setCurrentIndex(i))
+            nav_layout.addWidget(button)
+            self.nav_buttons.append(button)
+        nav_layout.addStretch()
+        body.addWidget(nav)
+        body.addWidget(tabs, 1)
+        layout.addLayout(body, 1)
+        tabs.currentChanged.connect(self._sync_navigation)
 
         keys = QWidget()
         form = QFormLayout(keys)
         form.setContentsMargins(24, 24, 24, 24)
         form.setVerticalSpacing(16)
-        hint = QLabel("Enter a combination such as Ctrl+Alt+R. Use Ctrl or Alt with a letter, digit or F1–F12.")
+        heading = QLabel("Keyboard Shortcuts")
+        heading.setObjectName("settingsHeading")
+        form.addRow(heading)
+        hint = QLabel("Click a shortcut field, then hold Ctrl or Alt and press a letter, digit or F1–F12. Plus signs are added automatically. Esc cancels.")
         hint.setWordWrap(True)
         form.addRow(hint)
-        self.record = QLineEdit(shortcuts["record"])
-        self.visibility = QLineEdit(shortcuts["visibility"])
-        form.addRow("Start / stop recording", self.record)
-        form.addRow("Hide / restore window", self.visibility)
+        self.record = ShortcutCapture(shortcuts["record"])
+        self.visibility = ShortcutCapture(shortcuts["visibility"])
+        for name, field in (("Start / Stop Recording", self.record), ("Hide / Restore Window", self.visibility)):
+            card = QFrame()
+            card.setObjectName("settingsCard")
+            row = QHBoxLayout(card)
+            row.addWidget(QLabel(name), 1)
+            row.addWidget(field, 2)
+            edit = QPushButton("Edit")
+            edit.clicked.connect(field.begin_capture)
+            row.addWidget(edit)
+            form.addRow(card)
         reset = QPushButton("Restore defaults")
         reset.clicked.connect(self.reset_shortcuts)
         form.addRow(reset)
-        save = QPushButton("Save shortcuts")
+        save = QPushButton("Save changes")
+        save.setObjectName("primaryButton")
         save.clicked.connect(self.save_shortcuts)
         form.addRow(save)
         self.key_status = QLabel("")
@@ -61,6 +148,9 @@ class SettingsPage(QWidget):
         api_form = QFormLayout(api)
         api_form.setContentsMargins(24, 24, 24, 24)
         api_form.setVerticalSpacing(16)
+        api_heading = QLabel("Gemini API Key")
+        api_heading.setObjectName("settingsHeading")
+        api_form.addRow(api_heading)
         note = QLabel("Your key is stored in the local .env file, not encrypted. Do not share your configured portable folder.")
         note.setWordWrap(True)
         api_form.addRow(note)
@@ -75,7 +165,11 @@ class SettingsPage(QWidget):
             show.setText("Hide key" if checked else "Show key")
         ))
         api_form.addRow(show)
+        paste = QPushButton("Paste key")
+        paste.clicked.connect(lambda: self.api.setText(QApplication.clipboard().text().strip()))
+        api_form.addRow(paste)
         save_api = QPushButton("Save and check connection")
+        save_api.setObjectName("primaryButton")
         save_api.clicked.connect(self.save_api)
         api_form.addRow(save_api)
         self.api_status = QLabel("")
@@ -89,6 +183,9 @@ class SettingsPage(QWidget):
         appearance_form.setVerticalSpacing(16)
         explanation = QLabel("Adjust workspace dimming when capture protection is on. This is visual only and never changes Windows capture protection. Questions, answers and Settings stay fully visible.")
         explanation.setWordWrap(True)
+        appearance_heading = QLabel("Appearance")
+        appearance_heading.setObjectName("settingsHeading")
+        appearance_form.addRow(appearance_heading)
         appearance_form.addRow(explanation)
         self.transparency = QSlider(Qt.Orientation.Horizontal)
         self.transparency.setRange(0, 100)
@@ -97,13 +194,28 @@ class SettingsPage(QWidget):
         slider_row = QHBoxLayout()
         slider_row.addWidget(self.transparency, 1)
         slider_row.addWidget(self.transparency_value)
-        appearance_form.addRow("Interface transparency", slider_row)
+        slider_card = QFrame()
+        slider_card.setObjectName("settingsCard")
+        slider_layout = QVBoxLayout(slider_card)
+        slider_layout.addWidget(QLabel("Interface transparency"))
+        slider_layout.addLayout(slider_row)
+        appearance_form.addRow(slider_card)
         minimum = QLabel("0% = solid · 100% = maximum dimming; controls retain 12% visibility.")
         minimum.setWordWrap(True)
         appearance_form.addRow(minimum)
         self.restore_hover = QCheckBox("Restore full opacity on hover")
         self.restore_hover.setChecked(True)
-        appearance_form.addRow(self.restore_hover)
+        hover_card = QFrame()
+        hover_card.setObjectName("settingsCard")
+        QVBoxLayout(hover_card).addWidget(self.restore_hover)
+        appearance_form.addRow(hover_card)
+        preview_card = QFrame()
+        preview_card.setObjectName("settingsCard")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.addWidget(QLabel("Live Preview · visual dimming only"))
+        self.preview = AppearancePreview()
+        preview_layout.addWidget(self.preview)
+        appearance_form.addRow(preview_card)
         reset_appearance = QPushButton("Reset to default")
         reset_appearance.clicked.connect(self.reset_appearance)
         appearance_form.addRow(reset_appearance)
@@ -116,7 +228,12 @@ class SettingsPage(QWidget):
         self.transparency.valueChanged.connect(self.appearance_changed)
         self.restore_hover.toggled.connect(self.appearance_changed)
         tabs.addTab(appearance, "Appearance")
+        self._sync_navigation(0)
 
+
+    def _sync_navigation(self, index):
+        if 0 <= index < len(self.nav_buttons):
+            self.nav_buttons[index].setChecked(True)
 
     def set_appearance(self, values):
         self.appearance_timer.stop()
@@ -129,9 +246,13 @@ class SettingsPage(QWidget):
         self.restore_hover.blockSignals(False)
         self.transparency_value.setText(f'{self.appearance["transparency"]}%')
         self.appearance_status.clear()
+        self.preview.amount = self.appearance['transparency']
+        self.preview.update()
 
     def appearance_changed(self, _value=None):
         self.transparency_value.setText(f"{self.transparency.value()}%")
+        self.preview.amount = self.transparency.value()
+        self.preview.update()
         self.appearance_timer.start()
 
     def flush_appearance(self):
@@ -156,6 +277,8 @@ class SettingsPage(QWidget):
         self.flush_appearance()
 
     def refresh(self, shortcuts, api_key, status, api_tab=False):
+        self.record.cancel_capture()
+        self.visibility.cancel_capture()
         self.record.setText(shortcuts["record"])
         self.visibility.setText(shortcuts["visibility"])
         self.show_key.setChecked(False)
@@ -171,6 +294,8 @@ class SettingsPage(QWidget):
         self.api.clear()
 
     def reset_shortcuts(self):
+        self.record.cancel_capture()
+        self.visibility.cancel_capture()
         self.record.setText(DEFAULT_SHORTCUTS["record"])
         self.visibility.setText(DEFAULT_SHORTCUTS["visibility"])
 
@@ -181,6 +306,8 @@ class SettingsPage(QWidget):
         except (ValueError, OSError, RuntimeError) as exc:
             self.key_status.setText(str(exc))
             return
+        self.record.cancel_capture()
+        self.visibility.cancel_capture()
         self.record.setText(values["record"])
         self.visibility.setText(values["visibility"])
         self.key_status.setText("Saved. Shortcuts activate when you return to the workspace.")
