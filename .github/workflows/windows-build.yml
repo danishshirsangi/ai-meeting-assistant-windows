@@ -68,7 +68,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $failed = $true }
           if ($failed) { throw 'Security audit failed; review security reports before distribution' }
       - name: Test
-        run: python -m pytest -q
+        env:
+          PYTHONFAULTHANDLER: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: python -X faulthandler -m pytest -q
       - name: Package application
         shell: pwsh
         run: |

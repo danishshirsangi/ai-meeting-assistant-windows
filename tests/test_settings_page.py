@@ -5,8 +5,7 @@ from core.user_settings import DEFAULT_SHORTCUTS
 from ui.settings_dialog import SettingsPage
 
 
-def test_embedded_settings_navigation():
-    app = QApplication.instance() or QApplication([])
+def test_embedded_settings_navigation(qt_app):
     stack = QStackedWidget()
     workspace = QWidget()
     stack.addWidget(workspace)
@@ -24,3 +23,7 @@ def test_embedded_settings_navigation():
     page.findChild(QPushButton, "settingsBackButton").click()
     assert stack.currentWidget() is workspace
     stack.close()
+    stack.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()

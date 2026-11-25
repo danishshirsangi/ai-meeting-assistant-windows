@@ -26,8 +26,7 @@ def test_preferences(tmp_path, monkeypatch):
     assert settings.normalize_appearance({"transparency": True, "restore_on_hover": "no"}) == settings.DEFAULT_APPEARANCE
 
 
-def test_hover_focus_click_and_restore():
-    app = QApplication.instance() or QApplication([])
+def test_hover_focus_click_and_restore(qt_app):
     root = QWidget()
     button = QPushButton("Settings", root)
     label = QLabel("Footer", root)
@@ -56,10 +55,13 @@ def test_hover_focus_click_and_restore():
     manager.configure(False, settings.DEFAULT_APPEARANCE)
     assert all(w.graphicsEffect().opacity() == 1 for w in (button, label, critical))
     root.close()
+    root.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
 
 
-def test_appearance_page_save_and_reset():
-    app = QApplication.instance() or QApplication([])
+def test_appearance_page_save_and_reset(qt_app):
     saved = []
     page = SettingsPage(settings.DEFAULT_SHORTCUTS, None, lambda _: None,
                         lambda _: None, lambda: None, apply_appearance=saved.append)
@@ -71,3 +73,7 @@ def test_appearance_page_save_and_reset():
     page.reset_appearance()
     assert saved[-1] == settings.DEFAULT_APPEARANCE
     page.close()
+    page.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()

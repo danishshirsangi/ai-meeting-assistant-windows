@@ -6,8 +6,7 @@ from PySide6.QtTest import QTest
 from ui.shortcut_capture import ShortcutCapture
 
 
-def test_capture_chord_and_cancel():
-    app = QApplication.instance() or QApplication([])
+def test_capture_chord_and_cancel(qt_app):
     field = ShortcutCapture("Ctrl+Alt+R")
     field.begin_capture()
     QTest.keyPress(field, Qt.Key.Key_Control, Qt.KeyboardModifier.ControlModifier)
@@ -21,12 +20,19 @@ def test_capture_chord_and_cancel():
     QTest.keyClick(field, Qt.Key.Key_Escape)
     assert field.text() == "Ctrl+Alt+G"
     field.close()
+    field.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
 
 
-def test_function_key():
-    app = QApplication.instance() or QApplication([])
+def test_function_key(qt_app):
     field = ShortcutCapture("Ctrl+Alt+H")
     field.begin_capture()
     QTest.keyClick(field, Qt.Key.Key_F8, Qt.KeyboardModifier.ControlModifier)
     assert field.text() == "Ctrl+F8"
     field.close()
+    field.deleteLater()
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
