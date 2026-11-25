@@ -1,7 +1,7 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QLabel, QWidget
 from PySide6.QtTest import QTest
 from core import user_settings as settings
@@ -56,7 +56,6 @@ def test_hover_focus_click_and_restore(qt_app):
     assert all(w.graphicsEffect().opacity() == 1 for w in (button, label, critical))
     root.close()
     root.deleteLater()
-    from PySide6.QtCore import QCoreApplication, QEvent
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qt_app.processEvents()
 
@@ -74,6 +73,5 @@ def test_appearance_page_save_and_reset(qt_app):
     assert saved[-1] == settings.DEFAULT_APPEARANCE
     page.close()
     page.deleteLater()
-    from PySide6.QtCore import QCoreApplication, QEvent
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qt_app.processEvents()
