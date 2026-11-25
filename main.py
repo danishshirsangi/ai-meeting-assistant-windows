@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
+from ui.window_chrome import NoTooltips
 
 
 def main():
@@ -58,6 +59,8 @@ def main():
     app.setApplicationName("AI Meeting Assistant")
     app.setOrganizationName("AI Meeting Assistant")
     app.setStyle("Fusion")
+    no_tooltips = NoTooltips(app)
+    app.installEventFilter(no_tooltips)
     icon_path = Path(__file__).resolve().parent / "assets" / "interview-copilot.svg"
     app.setWindowIcon(QIcon(str(icon_path)))
 

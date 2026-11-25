@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QSplitter, QStackedWidget, QTextBrowser,
+    QMainWindow, QPushButton, QSplitter, QStackedWidget, QTextBrowser, QSizeGrip,
     QListWidget, QListWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -20,6 +20,7 @@ from ui.worker import FunctionWorker
 from ui.settings_dialog import SettingsPage
 from core.user_settings import load_shortcuts, save_shortcuts, save_api_key, load_appearance, save_appearance
 from ui.focus_appearance import FocusAppearance
+from ui.window_chrome import TitleBar, background_alpha
 
 
 class MainWindow(QMainWindow):
@@ -34,19 +35,20 @@ class MainWindow(QMainWindow):
         # Ctrl+Alt+H remains the global shortcut to hide/restore the window.
         self.setWindowFlag(Qt.WindowType.Tool, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.resize(1180, 850)
         self.setMinimumSize(900, 650)
 
-        # Explicit opaque palette avoids blank/transparent Qt windows on Windows.
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self.setAutoFillBackground(True)
+        # Enable per-pixel desktop compositing before the native window is created.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
         window_palette = self.palette()
         window_palette.setColor(QPalette.ColorRole.Window, QColor("#050806"))
         window_palette.setColor(QPalette.ColorRole.WindowText, QColor("#ecf7ef"))
         self.setPalette(window_palette)
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #050806;
+                background-color: transparent;
                 color: #ecf7ef;
                 font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             }
@@ -219,8 +221,6 @@ class MainWindow(QMainWindow):
         record = self.shortcuts["record"]
         visibility = self.shortcuts["visibility"]
         self.hide_button.setText(f"Hide window  {visibility}")
-        self.hide_button.setToolTip(f"Press {visibility} to restore the window.")
-        self.record_button.setToolTip(f"Press {record} to start or stop recording.")
         self.footer.setText(f"{record} Record / stop · {visibility} Hide / restore · Local transcription · Gemini responses online")
 
     def _save_shortcuts(self, values):
@@ -270,10 +270,14 @@ class MainWindow(QMainWindow):
         self._refresh_focus_appearance()
 
     def _refresh_focus_appearance(self):
-        self.focus_appearance.configure(self._capture_privacy_state == 'on', self.appearance)
+        active = self._capture_privacy_state == 'on'
+        self.focus_appearance.configure(active, self.appearance)
+        if hasattr(self, 'workspace_page'):
+            alpha = background_alpha(active, self.appearance['transparency'])
+            self.workspace_page.setStyleSheet(f'QWidget#appRoot {{ background-color: rgba(8, 13, 9, {alpha}); border: 1px solid #1e3b26; border-radius: 18px; }}')
         if hasattr(self, '_audio_panel'):
             active = self._capture_privacy_state == 'on' and self.appearance['transparency'] > 0
-            self._audio_panel.setStyleSheet('QFrame#surfacePanel { background: #0c1510; border-color: #182a20; }' if active else '')
+            self._audio_panel.setStyleSheet(f'QFrame#surfacePanel {{ background: rgba(12, 21, 16, {alpha}); border-color: #182a20; }}' if active else '')
 
     def _make_panel(self, title, hint=None):
         panel = QFrame()
@@ -298,13 +302,29 @@ class MainWindow(QMainWindow):
         central = QWidget()
         central.setObjectName("appRoot")
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        central.setAutoFillBackground(True)
+        central.setAutoFillBackground(False)
         central_palette = central.palette()
         central_palette.setColor(QPalette.ColorRole.Window, QColor("#080d09"))
         central.setPalette(central_palette)
         self.pages = QStackedWidget()
-        self.pages.setObjectName("appRoot")
-        self.setCentralWidget(self.pages)
+        self.pages.setObjectName("workspaceStack")
+        self.pages.setAutoFillBackground(False)
+        self.pages.setStyleSheet('QStackedWidget#workspaceStack { background: transparent; }')
+        shell = QWidget()
+        shell.setAutoFillBackground(False)
+        shell_layout = QVBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
+        shell_layout.addWidget(TitleBar(self))
+        shell_layout.addWidget(self.pages, 1)
+        grip_row = QHBoxLayout()
+        grip_row.setContentsMargins(0, 0, 2, 2)
+        grip_row.addStretch()
+        grip = QSizeGrip(self)
+        grip.setStyleSheet('background: #102219;')
+        grip_row.addWidget(grip)
+        shell_layout.addLayout(grip_row)
+        self.setCentralWidget(shell)
         self.workspace_page = central
         self.pages.addWidget(central)
         root = QVBoxLayout(central)
@@ -338,22 +358,14 @@ class MainWindow(QMainWindow):
         upload.clicked.connect(self.upload_resume)
         clear = QPushButton("Clear")
         clear.setText("Clear session")
-        clear.setToolTip("Clear the question list, answers and session context")
         clear.clicked.connect(self.clear_chat)
 
         self.privacy_button = QPushButton("SCREEN CAPTURE PROTECTION: ON")
         self.privacy_button.setObjectName("privacyButton")
-        self.privacy_button.setToolTip(
-            "Best-effort request to exclude this window from supported Windows capture APIs. "
-            "Meeting-app behaviour varies; this is not a universal guarantee."
-        )
         self.privacy_button.clicked.connect(self._toggle_capture_privacy)
 
         self.hide_button = QPushButton("Hide window  Ctrl+Alt+H")
         self.hide_button.setObjectName("hideButton")
-        self.hide_button.setToolTip(
-            "Hide AI Meeting Assistant. Press Ctrl + Alt + H to restore it."
-        )
         self.hide_button.clicked.connect(self._toggle_window_visibility)
 
         toolbar.addWidget(model_label)
@@ -423,19 +435,14 @@ class MainWindow(QMainWindow):
         recording_row = QHBoxLayout()
         self.record_button = QPushButton("Start recording")
         self.record_button.setObjectName("recordButton")
-        self.record_button.setToolTip(
-            "Press Ctrl + Alt + R to start recording; press again to stop."
-        )
         self.record_button.clicked.connect(self._toggle_recording)
 
         microphone_label = QLabel("Microphone")
         microphone_label.setObjectName("sectionHint")
         self.microphone = QComboBox()
         self.microphone.setMinimumWidth(220)
-        self.microphone.setToolTip("Choose the microphone used for your voice.")
         self.microphone.addItem("System default (Windows)", None)
         self.refresh_microphones_button = QPushButton("Refresh")
-        self.refresh_microphones_button.setToolTip("Refresh available microphones.")
         self.refresh_microphones_button.clicked.connect(self._refresh_microphones)
 
         self.audio_hint = QLabel("Mic + system audio · transcribed on device")
@@ -475,6 +482,11 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(self.shortcuts, None, self._save_shortcuts,
                                           self._replace_api_key, self._close_settings, self.pages,
                                           apply_appearance=self._save_appearance)
+        self.settings_page.setObjectName('settingsRoot')
+        self.settings_page.setAutoFillBackground(True)
+        palette = self.settings_page.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor('#080d09'))
+        self.settings_page.setPalette(palette)
         self.pages.addWidget(self.settings_page)
         self.pages.setCurrentWidget(self.workspace_page)
         for widget in (subtitle, model_label, microphone_label, self.footer):
@@ -507,31 +519,18 @@ class MainWindow(QMainWindow):
         if enabled and not ok:
             state = "unavailable"
             label = "SCREEN CAPTURE PROTECTION: UNAVAILABLE"
-            tooltip = (
-                "Could not apply the capture privacy request: " + detail +
-                "\nMeeting-app behaviour varies; this is not a universal guarantee."
-            )
         elif enabled:
             state = "on"
             label = "SCREEN CAPTURE PROTECTION: ON"
-            tooltip = (
-                "The main window is set to exclude from supported Windows capture APIs. "
-                "Meeting-app behaviour varies; this is not a universal guarantee."
-            )
         else:
             state = "off"
             label = "SCREEN CAPTURE PROTECTION: OFF"
-            tooltip = (
-                "The main window is allowed in supported Windows capture APIs. "
-                "Meeting-app behaviour varies."
-            )
 
         self._capture_privacy_state = state if ok else "unavailable"
         if not ok and not enabled:
             label = "SCREEN CAPTURE PROTECTION: UNAVAILABLE"
             state = "unavailable"
         self.privacy_button.setText(label)
-        self.privacy_button.setToolTip(tooltip)
         self.privacy_button.setProperty("privacyState", state)
         self.privacy_button.style().unpolish(self.privacy_button)
         self.privacy_button.style().polish(self.privacy_button)
@@ -539,7 +538,7 @@ class MainWindow(QMainWindow):
         active = self._capture_privacy_state == 'on'
         for panel in self._focus_panels:
             panel.setStyleSheet('QFrame#surfacePanel { border: 1px solid #38d866; }' if active else '')
-        self._audio_panel.setStyleSheet('QFrame#surfacePanel { background: #0c1510; border-color: #182a20; }' if active and self.appearance['transparency'] else '')
+
 
     def _toggle_window_visibility(self):
         """Hide or restore the main window without touching audio or workers."""
@@ -570,7 +569,6 @@ class MainWindow(QMainWindow):
                 "Audio dependencies unavailable. Install requirements-audio-windows.txt"
             )
             self.record_button.setEnabled(False)
-            self.status.setToolTip(str(exc))
 
     def _refresh_microphones(self):
         if self.audio is None:
@@ -624,7 +622,6 @@ class MainWindow(QMainWindow):
             self._set_status("Gemini API key missing — open Settings", warning=True)
         else:
             self._set_status("Gemini unavailable — check connection / key", warning=True)
-        self.status.setToolTip(message)
         if self.pages.currentWidget() is self.settings_page:
             self.settings_page.api_status.setText("Connection failed. Check the API key, model access and internet connection.")
 
@@ -750,7 +747,6 @@ class MainWindow(QMainWindow):
         visible = question if len(question) <= 105 else question[:102].rstrip() + "…"
         item = QListWidgetItem(f"Q{question_id:02d}  {visible}")
         item.setData(Qt.ItemDataRole.UserRole, question_id)
-        item.setToolTip(question)
         self.question_list.addItem(item)
         self.questions_empty.hide()
         self.question_list.setCurrentItem(item)
@@ -768,7 +764,6 @@ class MainWindow(QMainWindow):
         self._selected_question_id = question_id
         question = entry["question"]
         self.answer_header_hint.setText(question)
-        self.answer_header_hint.setToolTip(question)
         if entry["status"] == "pending":
             self.answer_view.setHtml(
                 "<p style='color:#9fb7d6;'>Generating answer…</p>"
@@ -824,7 +819,6 @@ class MainWindow(QMainWindow):
                     "<p style='color:#9fb7a6;'>You can try again. Full details are saved in the application log.</p>"
                     "</div>"
                 )
-        self.status.setToolTip(str(error))
 
     def _answer_stage(self, stage):
         self._set_status(stage)
@@ -933,7 +927,6 @@ class MainWindow(QMainWindow):
         self._stream_render_timer.stop()
         self.ask_button.setEnabled(True)
         self._set_status("Error", warning=True)
-        self.status.setToolTip(str(error))
         safe_error = html.escape(str(error)[:3000])
         self.answer_view.setHtml(
             "<div style='color:#ffb4a8;'>"
